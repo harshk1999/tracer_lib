@@ -1,4 +1,4 @@
-module tracer_lib
+module github.com/harshk1999/tracer_lib
 
 go 1.22.5
 
