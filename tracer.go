@@ -10,33 +10,33 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/harshk1999/tracer_lib/client/tracer"
+	"github.com/harshk1999/tracer_lib/internal/client/tracer"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-var lib *Lib
+var library *lib
 
-type Event struct {
+type event struct {
 	CreatedAt time.Time
 	Id        string
 	Metadata  []byte
 }
 
-type Log struct {
+type log struct {
 	EventId   string
 	Metadata  []byte
 	Log       string
 	CreatedAt time.Time
 }
 
-type Lib struct {
+type lib struct {
 	tracerClient tracer.TracerClient
-	logs         []Log
-	events       []Event
-	logChan      chan Log
-	eventChan    chan Event
+	logs         []log
+	events       []event
+	logChan      chan log
+	eventChan    chan event
 	closeChan    chan struct{}
 	flushTimeout time.Duration
 }
@@ -52,31 +52,31 @@ func Initialise(serverUrl string, flushTimeout time.Duration) error {
 	}
 
 	tracerClient := tracer.NewTracerClient(tracerConn)
-	lib = &Lib{
+	library = &lib{
 		tracerClient: tracerClient,
-		events:       make([]Event, 100),
-		logs:         make([]Log, 100),
-		logChan:      make(chan Log, 1000),
-		eventChan:    make(chan Event, 1000),
+		events:       make([]event, 100),
+		logs:         make([]log, 100),
+		logChan:      make(chan log, 1000),
+		eventChan:    make(chan event, 1000),
 		closeChan:    make(chan struct{}),
 		flushTimeout: flushTimeout,
 	}
 
-	go lib.listenForLogs()
+	go library.listenForLogs()
 
 	return nil
 }
 
 func Shutdown() error {
-	if lib == nil {
+	if library == nil {
 		return errors.New("Tracer not initialised")
 	}
-	lib.closeChan <- struct{}{}
-	close(lib.logChan)
+	library.closeChan <- struct{}{}
+	close(library.logChan)
 	return nil
 }
 
-func (l *Lib) sendLogs() {
+func (l *lib) sendLogs() {
 	wg := sync.WaitGroup{}
 	wg.Add(2)
 	go func(group *sync.WaitGroup) {
@@ -98,7 +98,7 @@ func (l *Lib) sendLogs() {
 		if err != nil {
 			fmt.Println("Error sending logs to tracer server", err)
 		}
-		l.logs = make([]Log, 100)
+		l.logs = make([]log, 100)
 
 	}(&wg)
 
@@ -121,14 +121,14 @@ func (l *Lib) sendLogs() {
 			fmt.Println("Error sending events to tracer server", err)
 		}
 
-		l.events = make([]Event, 100)
+		l.events = make([]event, 100)
 
 	}(&wg)
 
 	wg.Wait()
 }
 
-func (l *Lib) listenForLogs() {
+func (l *lib) listenForLogs() {
 	timer := time.NewTimer(l.flushTimeout)
 	for {
 		select {
@@ -160,7 +160,7 @@ func (l *Lib) listenForLogs() {
 }
 
 func initialisationCheck() {
-	if lib == nil {
+	if library == nil {
 		panic("Tracer not initilised")
 	}
 }
@@ -186,18 +186,18 @@ func CreateEvent(metaData map[string]interface{}) string {
 		panic("Error marshalling metadata")
 	}
 
-	event := Event{
+	event := event{
 		Id:        idStr,
 		CreatedAt: tm,
 		Metadata:  bytes,
 	}
 
-	lib.eventChan <- event
+	library.eventChan <- event
 
 	return idStr
 }
 
-func logInfo(ctx context.Context, metaData map[string]interface{}, logs ...any) string {
+func LogInfo(ctx context.Context, metaData map[string]interface{}, logs ...any) string {
 	initialisationCheck()
 	tracerId, _ := ctx.Value("tracer_id").(string)
 	tm := time.Now()
@@ -220,19 +220,19 @@ func logInfo(ctx context.Context, metaData map[string]interface{}, logs ...any) 
 		panic("Error marshalling metadata")
 	}
 
-	log := Log{
+	log := log{
 		EventId:   tracerId,
 		Log:       fmt.Sprint(logs...),
 		CreatedAt: tm,
 		Metadata:  bytes,
 	}
 
-	lib.logChan <- log
+	library.logChan <- log
 
 	return idStr
 }
 
-func logError(ctx context.Context, metaData map[string]interface{}, logs ...any) string {
+func LogError(ctx context.Context, metaData map[string]interface{}, logs ...any) string {
 	initialisationCheck()
 	tracerId, _ := ctx.Value("tracer_id").(string)
 	tm := time.Now()
@@ -255,19 +255,19 @@ func logError(ctx context.Context, metaData map[string]interface{}, logs ...any)
 		panic("Error marshalling metadata")
 	}
 
-	log := Log{
+	log := log{
 		EventId:   tracerId,
 		Log:       fmt.Sprint(logs...),
 		CreatedAt: tm,
 		Metadata:  bytes,
 	}
 
-	lib.logChan <- log
+	library.logChan <- log
 
 	return idStr
 }
 
-func logWarn(ctx context.Context, metaData map[string]interface{}, logs ...any) string {
+func LogWarn(ctx context.Context, metaData map[string]interface{}, logs ...any) string {
 	initialisationCheck()
 	tracerId, _ := ctx.Value("tracer_id").(string)
 	tm := time.Now()
@@ -290,14 +290,14 @@ func logWarn(ctx context.Context, metaData map[string]interface{}, logs ...any) 
 		panic("Error marshalling metadata")
 	}
 
-	log := Log{
+	log := log{
 		EventId:   tracerId,
 		Log:       fmt.Sprint(logs...),
 		CreatedAt: tm,
 		Metadata:  bytes,
 	}
 
-	lib.logChan <- log
+	library.logChan <- log
 
 	return idStr
 }
