@@ -78,8 +78,9 @@ func Shutdown() error {
 func (l *lib) sendLogs() {
 	fmt.Println("Sending logs to server")
 	wg := sync.WaitGroup{}
+  wg.Add(2)
+
 	go func(group *sync.WaitGroup) {
-		group.Add(1)
 		defer group.Done()
 		logs := []*tracer.Log{}
 		for _, v := range l.logs {
@@ -103,7 +104,6 @@ func (l *lib) sendLogs() {
 	}(&wg)
 
 	go func(group *sync.WaitGroup) {
-		group.Add(1)
 		defer group.Done()
 		events := []*tracer.Event{}
 		for _, v := range l.events {
