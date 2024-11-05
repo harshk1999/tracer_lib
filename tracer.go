@@ -8,9 +8,9 @@ import (
 	"runtime"
 	"sync"
 	"time"
-	"tracer_lib/client/tracer"
 
 	"github.com/google/uuid"
+	"github.com/harshk1999/tracer_lib/client/tracer"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/types/known/timestamppb"
