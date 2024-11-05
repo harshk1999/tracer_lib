@@ -54,8 +54,8 @@ func Initialise(serverUrl string, flushTimeout time.Duration) error {
 	tracerClient := tracer.NewTracerClient(tracerConn)
 	library = &lib{
 		tracerClient: tracerClient,
-		events:       make([]event, 100),
-		logs:         make([]log, 100),
+		events:       make([]event, 0, 100),
+		logs:         make([]log, 0, 100),
 		logChan:      make(chan log, 1000),
 		eventChan:    make(chan event, 1000),
 		closeChan:    make(chan struct{}),
@@ -72,14 +72,14 @@ func Shutdown() error {
 		return errors.New("Tracer not initialised")
 	}
 	library.closeChan <- struct{}{}
-	close(library.logChan)
 	return nil
 }
 
 func (l *lib) sendLogs() {
+	fmt.Println("Sending logs to server")
 	wg := sync.WaitGroup{}
-	wg.Add(2)
 	go func(group *sync.WaitGroup) {
+		group.Add(1)
 		defer group.Done()
 		logs := []*tracer.Log{}
 		for _, v := range l.logs {
@@ -98,11 +98,12 @@ func (l *lib) sendLogs() {
 		if err != nil {
 			fmt.Println("Error sending logs to tracer server", err)
 		}
-		l.logs = make([]log, 100)
+		l.logs = make([]log, 0, 100)
 
 	}(&wg)
 
 	go func(group *sync.WaitGroup) {
+		group.Add(1)
 		defer group.Done()
 		events := []*tracer.Event{}
 		for _, v := range l.events {
@@ -121,7 +122,7 @@ func (l *lib) sendLogs() {
 			fmt.Println("Error sending events to tracer server", err)
 		}
 
-		l.events = make([]event, 100)
+		l.events = make([]event, 0, 100)
 
 	}(&wg)
 
@@ -133,6 +134,7 @@ func (l *lib) listenForLogs() {
 	for {
 		select {
 		case log := <-l.logChan:
+			fmt.Println("Log received")
 			l.logs = append(l.logs, log)
 			if len(l.logs) >= 100 {
 				if !timer.Stop() {
@@ -142,6 +144,7 @@ func (l *lib) listenForLogs() {
 				timer = time.NewTimer(l.flushTimeout)
 			}
 		case event := <-l.eventChan:
+			fmt.Println("Event received")
 			l.events = append(l.events, event)
 			if len(l.events) >= 100 {
 				if !timer.Stop() {
@@ -151,9 +154,11 @@ func (l *lib) listenForLogs() {
 				timer = time.NewTimer(l.flushTimeout)
 			}
 		case <-timer.C:
+			fmt.Println("Timer timedout")
 			l.sendLogs()
 			timer = time.NewTimer(l.flushTimeout)
 		case <-l.closeChan:
+			fmt.Println("shutdown")
 			l.sendLogs()
 		}
 	}
