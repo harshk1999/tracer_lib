@@ -13,6 +13,7 @@ import (
 	"github.com/harshk1999/tracer_lib/internal/client/tracer"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -39,9 +40,14 @@ type lib struct {
 	eventChan    chan event
 	closeChan    chan struct{}
 	flushTimeout time.Duration
+	globalData   map[string]interface{}
 }
 
-func Initialise(serverUrl string, flushTimeout time.Duration) error {
+func Initialise(
+	serverUrl string,
+	flushTimeout time.Duration,
+	globalData map[string]interface{},
+) error {
 	tracerConn, err := grpc.NewClient(
 		serverUrl,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
@@ -60,6 +66,7 @@ func Initialise(serverUrl string, flushTimeout time.Duration) error {
 		eventChan:    make(chan event, 1000),
 		closeChan:    make(chan struct{}),
 		flushTimeout: flushTimeout,
+		globalData:   globalData,
 	}
 
 	go library.listenForLogs()
@@ -78,7 +85,7 @@ func Shutdown() error {
 func (l *lib) sendLogs() {
 	fmt.Println("Sending logs to server")
 	wg := sync.WaitGroup{}
-  wg.Add(2)
+	wg.Add(2)
 
 	go func(group *sync.WaitGroup) {
 		defer group.Done()
@@ -182,6 +189,11 @@ func CreateEvent(metaData map[string]interface{}) string {
 		}
 		metaData["line"] = line
 		metaData["file"] = file
+		if library.globalData != nil {
+			for key, value := range library.globalData {
+				metaData[key] = value
+			}
+		}
 	} else {
 		panic("Could not get caller info")
 	}
@@ -216,6 +228,11 @@ func LogInfo(ctx context.Context, metaData map[string]interface{}, logs ...any) 
 		metaData["line"] = line
 		metaData["file"] = file
 		metaData["level"] = "info"
+		if library.globalData != nil {
+			for key, value := range library.globalData {
+				metaData[key] = value
+			}
+		}
 	} else {
 		panic("Could not get caller info")
 	}
@@ -251,6 +268,11 @@ func LogError(ctx context.Context, metaData map[string]interface{}, logs ...any)
 		metaData["line"] = line
 		metaData["file"] = file
 		metaData["level"] = "error"
+		if library.globalData != nil {
+			for key, value := range library.globalData {
+				metaData[key] = value
+			}
+		}
 	} else {
 		panic("Could not get caller info")
 	}
@@ -286,6 +308,11 @@ func LogWarn(ctx context.Context, metaData map[string]interface{}, logs ...any) 
 		metaData["line"] = line
 		metaData["file"] = file
 		metaData["level"] = "warn"
+		if library.globalData != nil {
+			for key, value := range library.globalData {
+				metaData[key] = value
+			}
+		}
 	} else {
 		panic("Could not get caller info")
 	}
@@ -305,4 +332,25 @@ func LogWarn(ctx context.Context, metaData map[string]interface{}, logs ...any) 
 	library.logChan <- log
 
 	return idStr
+}
+
+func GetTracerContextFromGrpcContext(ctx context.Context) context.Context {
+	md, _ := metadata.FromIncomingContext(ctx)
+	values := md.Get("tracer_id")
+	var tracerId string
+	if len(values) == 1 {
+		tracerId = values[0]
+	}
+
+	newCtx := context.WithValue(ctx, "tracer_id", tracerId)
+	return newCtx
+}
+
+func GetGprcContextFromContext(ctx context.Context) context.Context {
+	tracerId := ctx.Value("tracer_id").(string)
+	mdCtx := metadata.NewOutgoingContext(
+		ctx,
+		metadata.Pairs("tracer_id", tracerId),
+	)
+	return mdCtx
 }
