@@ -347,7 +347,7 @@ func GetTracerContextFromGrpcContext(ctx context.Context) context.Context {
 }
 
 func GetGprcContextFromContext(ctx context.Context) context.Context {
-	tracerId := ctx.Value("tracer_id").(string)
+	tracerId, _ := ctx.Value("tracer_id").(string)
 	mdCtx := metadata.NewOutgoingContext(
 		ctx,
 		metadata.Pairs("tracer_id", tracerId),
