@@ -41,6 +41,7 @@ type lib struct {
 	closeChan    chan struct{}
 	flushTimeout time.Duration
 	globalData   map[string]interface{}
+	isLocal      bool
 }
 
 func Initialise(
@@ -48,17 +49,26 @@ func Initialise(
 	flushTimeout time.Duration,
 	globalData map[string]interface{},
 ) error {
-	tracerConn, err := grpc.NewClient(
-		serverUrl,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-	)
-	if err != nil {
-		fmt.Println("Error connecting to tracer server", err)
-		return err
+	var tracerClient tracer.TracerClient
+	var isLocal bool
+
+	if len(serverUrl) != 0 {
+		tracerConn, err := grpc.NewClient(
+			serverUrl,
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
+		)
+		if err != nil {
+			fmt.Println("Error connecting to tracer server", err)
+			return err
+		}
+		tracerClient = tracer.NewTracerClient(tracerConn)
+	}
+	if len(serverUrl) == 0 {
+		isLocal = true
 	}
 
-	tracerClient := tracer.NewTracerClient(tracerConn)
 	library = &lib{
+		isLocal:      isLocal,
 		tracerClient: tracerClient,
 		events:       make([]event, 0, 100),
 		logs:         make([]log, 0, 100),
@@ -83,6 +93,9 @@ func Shutdown() error {
 }
 
 func (l *lib) sendLogs() {
+	if l.isLocal {
+		return
+	}
 	fmt.Println("Sending logs to server")
 	wg := sync.WaitGroup{}
 	wg.Add(2)
@@ -141,7 +154,11 @@ func (l *lib) listenForLogs() {
 	for {
 		select {
 		case log := <-l.logChan:
-			fmt.Println("Log received")
+			// fmt.Println("Log received")
+			if l.isLocal {
+				fmt.Println(log.Log)
+				break
+			}
 			l.logs = append(l.logs, log)
 			if len(l.logs) >= 100 {
 				if !timer.Stop() {
@@ -151,6 +168,9 @@ func (l *lib) listenForLogs() {
 				timer = time.NewTimer(l.flushTimeout)
 			}
 		case event := <-l.eventChan:
+			if l.isLocal {
+				break
+			}
 			fmt.Println("Event received")
 			l.events = append(l.events, event)
 			if len(l.events) >= 100 {
@@ -161,6 +181,9 @@ func (l *lib) listenForLogs() {
 				timer = time.NewTimer(l.flushTimeout)
 			}
 		case <-timer.C:
+			if l.isLocal {
+				break
+			}
 			fmt.Println("Timer timedout")
 			l.sendLogs()
 			timer = time.NewTimer(l.flushTimeout)
